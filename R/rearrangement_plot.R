@@ -1,16 +1,16 @@
 # An R file to be sourced.
 #
-# Rearrangement plot (aka chromothripsis paper type plot) for plotting 
+# Rearrangement plot (aka chromothripsis paper type plot) for plotting
 # rearrangement breakpoints and copy number.
 #
 # After sourcing workspace will have a variable 'chr_lens', and three functions:
-# arc(), window_means() and plot_rearrangements(). 
-# 
+# arc(), window_means() and plot_rearrangements().
+#
 # Author: Yilong Li
-# Last update: 2015-03-02, added BAF plotting. 
+# Last update: 2015-03-02, added BAF plotting.
 ###############################################################################
 
-# To read in this file: 
+# To read in this file:
 # source("/Users/yl3/Documents/workspace/rg_ordering_pilot/rearrangement_plot.R")
 
 
@@ -29,7 +29,7 @@ names(chr_lens) = temp
 arc = function(x0, x1, y, xr, yr, col, lwd) {
     x = (x0 + x1)/2  # Center of arc
     xr = x - x0 	 # x-radius of arc
-    
+
     apply(
         cbind(x, y, xr, yr, col),
         1,
@@ -41,7 +41,7 @@ arc = function(x0, x1, y, xr, yr, col, lwd) {
             col = z[5]
             x_points = seq(x - xr, x + xr, length.out = 200)
             y_points = y + yr * sqrt( 1  -  ( (x_points-x) / xr )^2 )
-            
+
             lines(
                 x_points,
                 y_points,
@@ -50,7 +50,7 @@ arc = function(x0, x1, y, xr, yr, col, lwd) {
             )
         }
     )
-    
+
     return()
 }
 
@@ -62,13 +62,13 @@ window_means = function (coords, cns, min_pos, max_pos, win_size) {
         include_lowest = T,
         right = F
     )
-    
+
     cut_values = by(
         cns,
         cut_levels,
         function(x) mean(x, na.rm = T)
     )
-    
+
     return(
         cut_values[ as.character(1:ceiling((max_pos-min_pos+1)/win_size)) ]
     )
@@ -87,10 +87,10 @@ plot_rearrangements = function(
     chr_cum_lns = c(0, cumsum(chr_lens[chrs])[-length(chrs)])
     names(chr_cum_lns) = chrs
     xrange_size = cumsum(chr_lens[chrs])
-    
+
     if (is.null(xlim)) {
         xlim = c(1, sum(chr_lens[chrs]))
-        
+
         if (is.null(yrange)) {
             yrange = c(0, quantile(cn_bedgraph[cn_bedgraph[,1] %in% chrs, 4], p = 0.999, na.rm = T))
             yrange = c(floor(yrange[1]), ceiling(yrange[2]))
@@ -100,12 +100,12 @@ plot_rearrangements = function(
         if (!is.null(chr_lim)) {
             stop()
         }
-        
+
         if (is.null(yrange)) {
             yrange = c(0, quantile(cn_bedgraph[cn_bedgraph[,1] %in% chr_lim & cn_bedgraph[,2] > xlim[1] & cn_bedgraph[,3] < xlim[2], 4], p = 0.999, na.rm = T))
             yrange = c(floor(yrange[1]), ceiling(yrange[2]))
         }
-        
+
         xlim = chr_cum_lns[chr_lim] + xlim
     }
     else {
@@ -114,7 +114,7 @@ plot_rearrangements = function(
             yrange = c(floor(yrange[1]), ceiling(yrange[2]))
         }
     }
-    
+
     if (!is.null(cn_bedgraph)) {
         cn = cn_bedgraph[cn_bedgraph[,1] %in% chrs, ]
     }
@@ -136,9 +136,9 @@ plot_rearrangements = function(
             cn_win_size = 5e2
         }
     }
-    
+
     yrange_size = yrange[2] - yrange[1]
-    
+
     td_col         = "darkorange4"
     del_col        = "darkslateblue"
     tail_tail_col  = "cadetblue4"
@@ -148,7 +148,7 @@ plot_rearrangements = function(
     # head_head_col = "#9932CC"
     # tail_tail_col = "#4DAF4A"
     # inter_chrs_col = "darkorchid1"
-    
+
     # Create the plot
     # par(mar = c(5, 4, 2, 2) + .1)
     layout(matrix(c(rep(1, 7), 2)))
@@ -167,8 +167,8 @@ plot_rearrangements = function(
         xaxs = "i",
         main = main
     )
-    
-    
+
+
     # Shaded grid
     for (i in yrange[1]:yrange[2]) {
         polygon(
@@ -178,8 +178,8 @@ plot_rearrangements = function(
             lty=0
         )
     }
-    
-    
+
+
     # Line to separate chromosomes
     if (length(chrs) > 1) {
         segments(
@@ -188,8 +188,8 @@ plot_rearrangements = function(
             y1 = yrange[2] + 0.5
         )
     }
-    
-    
+
+
     # Plot CN
     win_size = cn_win_size
     for (c in chrs) {
@@ -218,10 +218,10 @@ plot_rearrangements = function(
                 )
             }
         }
-        
+
         if (!is.null(segments)) {
             sel = segments[,1] == c
-            
+
             segments(
                 x0 = chr_cum_lns[c] + segments[sel, 2] + 1,
                 x1 = chr_cum_lns[c] + segments[sel, 3],
@@ -233,8 +233,8 @@ plot_rearrangements = function(
     }
     axis(2, at = axisTicks(usr=yrange, log=F), las=2)
     title(ylab = "Copy number")
-    
-    
+
+
     # Plot rearrangements: First dotted lines
     segments(
         x0 = c(1, 1),
@@ -243,14 +243,14 @@ plot_rearrangements = function(
         lty = 3
     )
     abline(h = yrange[2] + 0.5)
-    
+
     # Then 'intra-chromosomal' translocations
     sel = bedpe[,1] %in% chrs & bedpe[,4] %in% chrs & !(bedpe[,7] %in% BFB_ids)  # Breakage-fusion-bridge RGMTS to be plotted separately
     col =
         ifelse( bedpe[sel, 9] == "+" & bedpe[sel, 10] == "+", head_head_col,
         ifelse( bedpe[sel, 9] == "+" & bedpe[sel, 10] == "-", del_col,
         ifelse( bedpe[sel, 9] == "-" & bedpe[sel, 10] == "+", td_col, tail_tail_col)))
-    
+
     if (sum(sel) > 0) {
         arc(
             x0  = chr_cum_lns[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel, 2:3]),
@@ -275,8 +275,8 @@ plot_rearrangements = function(
             lwd = lwd
         )
     }
-    
-    # Then rearrangments where low end %in% chrs and !(high end %in% chrs) 
+
+    # Then rearrangments where low end %in% chrs and !(high end %in% chrs)
     sel = bedpe[,1] %in% chrs & !(bedpe[,4] %in% chrs)
     if (sum(sel) > 0) {
         # arrows(
@@ -303,8 +303,8 @@ plot_rearrangements = function(
             xpd = NA
         )
     }
-    
-    # Then rearrangments where high end %in% chrs and !(low end %in% chrs) 
+
+    # Then rearrangments where high end %in% chrs and !(low end %in% chrs)
     sel = !(bedpe[,1] %in% chrs) & bedpe[,4] %in% chrs
     if (sum(sel) > 0) {
         # arrows(
@@ -331,8 +331,8 @@ plot_rearrangements = function(
             xpd = NA
         )
     }
-    
-    
+
+
     # Then BFBs, currently only supporting 2 BFB events max
     # Also, in case of BFBs, only plotting 1st end
     if (length(BFB_ids) > 2) {
@@ -340,7 +340,7 @@ plot_rearrangements = function(
     }
     if (length(BFB_ids) == 2) {
         sel = bedpe[,7] == BFB_ids[2]
-        col = 
+        col =
             ifelse( bedpe[sel, 9] == "+" & bedpe[sel, 10] == "+", head_head_col,
                 ifelse( bedpe[sel, 9] == "+" & bedpe[sel, 10] == "-", del_col,
                     ifelse( bedpe[sel, 9] == "-" & bedpe[sel, 10] == "+", td_col, 		 tail_tail_col)))
@@ -356,7 +356,7 @@ plot_rearrangements = function(
             y1 = yrange[2] + (1.2 + 0.1)*yrange_size,
             col = col
         )
-        
+
         # The curved arrow
         lines(
             x = chr_cum_lns[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel, 2:3])  +  xrange_size/50*cos(seq(-pi/2, pi/2, length.out=20)) * ifelse(bedpe[sel, 9] == "+", 1, -1) + ifelse(bedpe[sel, 9] == "+", -1, 1)*xrange_size/50,
@@ -377,9 +377,9 @@ plot_rearrangements = function(
     if (length(BFB_ids) >= 1) {
         abline(h = yrange[2] + c(1, 1.2)*yrange_size)
         if (length(BFB_ids) > 1) abline(h = yrange[2] + 1.4*yrange_size)
-        
+
         sel = bedpe[,7] == BFB_ids[1]
-        col = 
+        col =
             ifelse( bedpe[sel, 9] == "+" & bedpe[sel, 10] == "+", head_head_col,
                 ifelse( bedpe[sel, 9] == "+" & bedpe[sel, 10] == "-", del_col,
                     ifelse( bedpe[sel, 9] == "-" & bedpe[sel, 10] == "+", td_col, 		 tail_tail_col)))
@@ -395,7 +395,7 @@ plot_rearrangements = function(
             y1 = yrange[2] + (1 + 0.1)*yrange_size,
             col = col
         )
-        
+
         # The curved arrow
         lines(
             x = chr_cum_lns[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel, 2:3])  +  xrange_size/50*cos(seq(-pi/2, pi/2, length.out=20)) * ifelse(bedpe[sel, 9] == "+", 1, -1) + ifelse(bedpe[sel, 9] == "+", -1, 1)*xrange_size/50,
@@ -413,8 +413,8 @@ plot_rearrangements = function(
             length = arrow_ln
         )
     }
-    
-    
+
+
     # Annotations on top
     if (!is.null(annot) && sum(annot[,1] %in% chrs > 0)) {
         sel = annot[,1] %in% chrs
@@ -424,7 +424,7 @@ plot_rearrangements = function(
             x1 = chr_cum_lns[as.character(annot[sel, 1])] + annot[sel, 3],
             lwd = 2
         )
-        
+
         text(
             chr_cum_lns[as.character(annot[sel, 1])] + rowMeans(annot[sel, 2:3]),
             1.2 * yrange_size + yrange[2] + (0:(sum(annot[,1] %in% chrs)-1)) * 0.05 * yrange_size,
@@ -479,8 +479,8 @@ plot_rearrangements = function(
 
         legend("topleft", bty = "n", pch = 16, col = mut_col, legend = names(mut_col), ncol = 2)
     }
-    
-    
+
+
     # Now plot the B-allele frequency
     par(mar = c(0, 4, 0, 4) + .1)
     plot(
@@ -496,7 +496,7 @@ plot_rearrangements = function(
         xaxs = "i"
     )
     abline(h = seq(0, 1, by = 0.25), lwd = lwd, col = "lightgrey")
-    
+
     for (c in chrs) {
         if (!is.null(allele_freqs)) {
             # When plotting only one chromosome with zoomed-in image, only plot
@@ -553,8 +553,8 @@ plot_rearrangements = function(
             }
         }
     }
-    
-    
+
+
     # X axis names and ticks
     par(mgp = par("mgp") + c(0,1,0))
     if (all(xlim == c(1, sum(chr_lens[chrs])))) {
@@ -585,7 +585,7 @@ plot_rearrangements = function(
         )
     }
     par(mgp = par("mgp") - c(0,1,0))
-    
+
     if (xaxt) {
         if (length(chrs) > 1) {
             if (all(xlim == c(1, sum(chr_lens[chrs])))) {
@@ -599,9 +599,9 @@ plot_rearrangements = function(
                 if (is.null(chr_lim) || !(chr_lim %in% names(chr_lens))) {
                     stop()
                 }
-                
+
                 pretty_ticks = pretty(xlim - chr_cum_lns[chr_lim])
-                
+
                 axis(1, at = pretty_ticks + chr_cum_lns[chr_lim], labels = pretty_ticks/1e6)
             }
         }
@@ -616,11 +616,11 @@ plot_rearrangements = function(
         }
     }
 
-    
+
     # Finally the ideogram
     if (xlim[2] - xlim[1] < 10e6) {
         print("Ideogram plotting disabled because xlim[2] - xlim[1] < 10e6")
-        
+
         ideogram = F
     }
     if (ideogram) {
