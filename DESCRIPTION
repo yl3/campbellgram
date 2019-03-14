@@ -1,0 +1,9 @@
+Package: campbellgram
+Title: Function for generating campbellgrams
+Version: 0.0.0
+Authors@R: person("Yilong", "Li", email = "yilong.li.yl3@gmail.com", role = c("aut", "cre"))
+Description: Joint visualisation of rearrangement junctions and copy number in somatic genomes.
+Depends: R (>= 3.5.1)
+License: MIT
+Encoding: UTF-8
+LazyData: true
