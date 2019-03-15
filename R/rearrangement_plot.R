@@ -1,53 +1,77 @@
-# An R file to be sourced.  Rearrangement plot (aka chromothripsis paper type
-# plot) for plotting rearrangement breakpoints and copy number.  After sourcing
-# workspace will have a variable 'chr_lens', and three functions: arc(),
-# window_means() and plot_rearrangements().  Author: Yilong Li Last update:
-# 2015-03-02, added BAF plotting.
-
-# To read in this file:
-# source('/Users/yl3/Documents/workspace/rg_ordering_pilot/rearrangement_plot.R')
+#' Function for plotting campbellgrams
+#'
+#' Copyright: 2019 Yilong Li <yilong.li.yl3@gmail.com>
 
 
-library(quantsmooth)  # For ideogram
-
-if (file.exists("~/work_related/programs/R_scripts/hg19_chr_sizes.txt")) {
-    chr_lens = read.table("~/work_related/programs/R_scripts/hg19_chr_sizes.txt", 
-        header = F, sep = "\t", row.names = 1, colClasses = c("character", "numeric"))
-} else {
-    chr_lens = read.table("/nfs/users/nfs_y/yl3/programs/ucsc/hg19.chrom_sizes", 
-        header = F, sep = "\t", row.names = 1, colClasses = c("character", "numeric"))
+#' Add an arc to the currently active plot.
+#'
+#' @param x X-axis coordinate of the centre of the arc.
+#' @param y Y-axis coordinate of the centre of the arc.
+#' @param xr X-axis radius.
+#' @param yr Y-axis radius.
+#' @param col colour of the arc.
+#' @param lwd line width of the arc.
+draw_arc = function(x, y, xr, yr, col, lwd) {
+    x_points = seq(x - xr, x + xr, length.out = 200)
+    y_points = y + yr * sqrt(1 - ( (x_points - x) / xr) ^ 2 )
+    lines(x_points, y_points, col = col, lwd = lwd)
 }
-temp = rownames(chr_lens)
-chr_lens = chr_lens[, 1]
-names(chr_lens) = temp
 
 
-arc = function(x0, x1, y, xr, yr, col, lwd) {
-    x = (x0 + x1)/2  # Center of arc
+#' Add horizontal arcs to the current plot.
+#'
+#' Draw the top or bottom half of a horizontal ellipsoid, i.e. one where both
+#' focal points are on the same Y-axis coordinate.
+#'
+#' @param x0 start points of an arc.
+#' @param x1 end points of an arc.
+#' @param y Y-axis coordinates of the arc.
+#' @param yr Y-axis radiuses. The sign of these values determine whether each
+#'   arc is drawn above or below \emph{y}.
+#' @param col colour of the arcs.
+#' @param lwd line width of the arcs.
+draw_arcs = function(x0, x1, y, yr, col, lwd) {
+    x = (x0 + x1) / 2  # Center of arc
     xr = x - x0  # x-radius of arc
-    
-    apply(cbind(x, y, xr, yr, col), 1, function(z) {
-        x = as.numeric(z[1])
-        y = as.numeric(z[2])
-        xr = as.numeric(z[3])
-        yr = as.numeric(z[4])
-        col = z[5]
-        x_points = seq(x - xr, x + xr, length.out = 200)
-        y_points = y + yr * sqrt(1 - ((x_points - x)/xr)^2)
-        
-        lines(x_points, y_points, col = col, lwd = lwd)
-    })
-    
-    return()
+    mapply_args = append(
+        list(FUN = draw_arc),
+        as.list(data.frame(x, y, xr, yr, col, lwd))
+    )
+    do.call(mapply, mapply_args)
 }
 
+
+#' Windowed means by chromosomal coordinate.
+#'
+#' Compute non-overlapping windowed means by setting window size based on
+#' chromosomal coordinates.
+#'
+#' @param coords coordinates of the data points.
+#' @param cns copy number levels for each coordinate.
+#' @param min_pos minimum \emph{coordinate} to accept. Coordinates lower than
+#'   this are discarded.
+#' @param max_pos maximum \emph{coordinate} to accept. Coordinates higher than
+#'   this are discarded.
+#' @param win_size window size.
+#'
+#' @return list of centre coordinates of the windows ("window_coords") and
+#'   their average values ("window_means").
 window_means = function(coords, cns, min_pos, max_pos, win_size) {
-    cut_levels = cut(coords, seq(min_pos, max_pos + win_size, win_size), labels = F, 
-        include_lowest = T, right = F)
-    
+    cut_levels = cut(
+      coords,
+      seq(min_pos, max_pos + win_size, win_size),
+      labels = F,
+      include_lowest = T,
+      right = F
+    )
+
+    window_coords = win_size / 2  +  seq(min_pos, max_pos, win_size)
     cut_values = by(cns, cut_levels, function(x) mean(x, na.rm = T))
-    
-    return(cut_values[as.character(1:ceiling((max_pos - min_pos + 1)/win_size))])
+    window_means = cut_values[
+        as.character(1:ceiling( (max_pos - min_pos + 1) / win_size ))
+    ]
+
+    return(list(window_coords, window_means))
 }
 
 plot_rearrangements = function(bedpe, chrs, cn_bedgraph = NULL, segments = NULL, 
