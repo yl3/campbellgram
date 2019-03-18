@@ -74,73 +74,189 @@ window_means = function(coords, cns, min_pos, max_pos, win_size) {
     return(list(window_coords, window_means))
 }
 
-plot_rearrangements = function(bedpe, chrs, cn_bedgraph = NULL, segments = NULL, 
-    yrange = NULL, ideogram = T, cn_cex = 0.3, lwd = 0.75, cn_win_size = NULL, BFB_ids = c(), 
-    arrow_ln = 0.15, xlim = NULL, chr_lim = NULL, annot = NULL, main = NULL, muts = NULL, 
-    allele_freqs = NULL, allele_freq_segments = NULL, xaxt = T) {
-    chrs = as.character(chrs)
-    if (!is.null(chr_lim)) {
-        chr_lim = as.character(chr_lim)
+
+#' Helper function for validating chrs_used.
+set_chrs_used = function(chrs_used, ref_genome) {
+    chrs_used = as.character(chrs_used)
+    if (any(!(chrs_used %in% ref_genome[, 1]))) {
+        msg = paste("Chromosome name(s) in chrs_used are not present on the ",
+                    "first column of parameter ref_genome.", sep = "")
+        stop(msg)
     }
-    chr_cum_lns = c(0, cumsum(chr_lens[chrs])[-length(chrs)])
-    names(chr_cum_lns) = chrs
-    xrange_size = cumsum(chr_lens[chrs])
-    
-    if (is.null(xlim)) {
-        xlim = c(1, sum(chr_lens[chrs]))
-        
-        if (is.null(yrange)) {
-            yrange = c(0, quantile(cn_bedgraph[cn_bedgraph[, 1] %in% chrs, 4], p = 0.999, 
-                na.rm = T))
-            yrange = c(floor(yrange[1]), ceiling(yrange[2]))
-        }
-    } else if (length(chrs) > 1) {
-        if (!is.null(chr_lim)) {
-            stop()
-        }
-        
-        if (is.null(yrange)) {
-            yrange = c(0, quantile(cn_bedgraph[cn_bedgraph[, 1] %in% chr_lim & cn_bedgraph[, 
-                2] > xlim[1] & cn_bedgraph[, 3] < xlim[2], 4], p = 0.999, na.rm = T))
-            yrange = c(floor(yrange[1]), ceiling(yrange[2]))
-        }
-        
-        xlim = chr_cum_lns[chr_lim] + xlim
+    return(chrs_used)
+}
+
+
+#' Helper function for setting chrs_shown based on provided parameter values.
+#'
+#' Also performs additional validations.
+set_chrs_shown = function(chrs_used, chrs_shown) {
+    if (length(chrs_shown) > 1) {
+        stop("Parameter 'chrs_shown' must be of length 1.")
+    }
+    if (is.null(chrs_shown)) {
+        return(chrs_used)
     } else {
-        if (is.null(yrange)) {
-            yrange = c(0, quantile(cn_bedgraph[cn_bedgraph[, 1] == chrs & cn_bedgraph[, 
-                2] > xlim[1] & cn_bedgraph[, 3] < xlim[2], 4], p = 0.999, na.rm = T))
-            yrange = c(floor(yrange[1]), ceiling(yrange[2]))
-        }
+        return(as.character(chrs_shown))
     }
-    
+}
+
+
+#' Helper function for setting xlim.
+#'
+#' If only one chromosome is to be shown, then set xlim as the entire chromosome
+#' unless xlim is already provided. Otherwise, set xlim as NULL.
+set_xlim = function(xlim, chrs_shown, chr_lens) {
+    if (length(chrs_shown) == 1) {
+        if (is.null(xlim)) {
+            xlim = c(1, chr_lens[chrs_shown])
+        }
+        return(xlim)
+    } else {
+        if (!is.null(xlim)) {
+            message(paste("Parameter xlim ignored, since more than one ",
+                          "chromosome is to be shown", sep = "\t"))
+        }
+        return(NULL)
+    }
+}
+
+
+#' Subset cn_bedgraph to actually visible regions.
+subset_cn_bedgraph = function(cn_bedgraph, chrs_shown, xlim) {
+    if (length(chrs_shown) == 1) {
+        idx = (cn_bedgraph[, 1] == chrs_shown
+               & cn_bedgraph[, 2] <= xlim[2]
+               & cn_bedgraph[, 3] >= xlim[1])
+    } else {
+        idx = cn_bedgraph[, 1] %in% chrs_shown
+    }
+    return(cn_bedgraph[idx, ])
+}
+
+
+#' Helper function for computing a copy number axis range for
+#' \code{campbellgram()}.
+compute_yrange = function(cn_bedgraph) {
+    if (is.null(cn_bedgraph)) {
+        # No copy number data for computing yrange - just return default values.
+        return(c(0, 4))
+    } else {
+        return(c(0, quantile(cn_bedgraph, p = 0.999, na.rm = T)))
+    }
+}
+
+
+#' Helper function for setting CN averaging window size dynamically.
+set_cn_win_size = function(xlim) {
+    if (xlim[2] - xlim[1] >= 1e+07) {
+        return(10000)
+    } else if (xlim[2] - xlim[1] >= 1e+06) {
+        return(1000)
+    } else {
+        return(500)
+    }
+}
+
+
+ARC_COLS = c(
+    td_col = "darkorange4",
+    del_col = "darkslateblue",
+    tail_tail_col = "cadetblue4",
+    head_head_col = "chartreuse2"
+)
+
+
+#' Plot a campbellgram
+#'
+#' Generate a campbellgram with rearrangement junctions at the top of the panel,
+#' and optionally absolute copy number, copy number segmentation, B allele
+#' frequency and point mutation rainfall plot at the bottom of the panel.
+#'
+#' Parameter \emph{chrs} controls which junctions are plotted as arcs and which
+#' ones are plotted as "inter-chromosomal" junctions. Parameter \emph{chr_lim}
+#' controls which chromosomes are actually plotted. For instance, by setting
+#' \emph{chr_lim = "1"} and \emph{chrs = c("1", "2")}, chromosomes 1 will be
+#' plotted, any intra-chromosomal junctions in chromosome 1 or inter-chromosomal
+#' junctions between chromosome 1 and chromosome 2 will be visualised as arcs,
+#' and all other inter-chromosomal junctions are visualised as inter-chromosomal
+#' junctions.
+#'
+#' One way to generate the \emph{ref_genome} table is using
+#' \emph{samtools faidx}.
+#'
+#' @param ref_genome data frame with chromosome name on the first column and
+#'   chromosome length on the second column.
+#' @param bedpe SV junctions in BEDPE format
+#'   (\link{https://bedtools.readthedocs.io/en/latest/content/general-usage.html#bedpe-format}).
+#'   TODO(yl3): default
+#' @param chrs_used rearrangement junctions within and between these chromosomes
+#'   are visualised as intra-chromosomal junctions with arcs. Other
+#'   rearrangement junctions are visualised as vertical lines. Names for
+#'   \emph{chrs_used} must be defined in \emph{ref_genome}.
+#' @param chrs_shown either a single chromosome name or NULL: chromosomes to be
+#'   displayed in the campbellgram. By default (NULL), all chromosomes in
+#'   \emph{chrs_used} are shown. If provided, the one provided chromosome is
+#'   displayed instead. Whether a rearrangement junction is displayed as an arc
+#'   or a vertical line is controlled using parameter \emph{chrs_used}.
+#' @param xlim X-axis limits for chromosomal coordinates for zooming into a sub-
+#'   chromosomal locus. This parameter is ignored if \emph{chrs_displ} contains
+#'   more than one chromosome.
+#' @param cn_bedgraph absolute copy number (for instance as opposed to log R
+#'   ratio) in bedGraph format
+#'   (\link{https://genome.ucsc.edu/goldenPath/help/bedgraph.html}).
+#' @param segments copy number segments to overlay in bedGraph format
+#'   (\link{https://genome.ucsc.edu/goldenPath/help/bedgraph.html}).
+#' @param yrange Y-axis range for copy number.
+#'   Default: \code{c(0, quantile(cn_bedgraph[,4], 0.999))}.
+#' @param ideogram: whether to plot an ideogram. By default, an ideogram is
+#'   shown if the X-axis spans more than 1 Mb.
+#' @param cn_win_size window size for averaging copy number before plotting
+#'   them. By default, if more than 1e7 bp is displayed, then window size is
+#'   10 kb, otherwise if more than 1e6 bp is displayed, then window size is
+#'   1 kb, otherwise window size is set to 500 bp.
+#' @param arc_cols named vector with labels "td_col", "del_col", "tail_tail_col"
+#'   and "head_head_col" for the colors of the arcs of different rearrangement
+#'   junction orientations.
+campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
+                        xlim = NULL, cn_bedgraph = NULL, segments = NULL,
+                        yrange = NULL, ideogram = NULL, cn_win_size = NULL,
+                        arc_cols = ARC_COLS, cn_cex = 0.3, lwd = 0.75,
+                        BFB_ids = c(), arrow_ln = 0.15, annot = NULL,
+                        main = NULL, muts = NULL, allele_freqs = NULL,
+                        allele_freq_segments = NULL, xaxt = T) {
+    # Internally, the X-axis is composed of all chromosomes in chrs_used stacked
+    # side by side. The actual part of the chromosome shown is controlled by
+    # chrs_displ and/or xlim.
+
+    # Create chromosome lengths vector. Ensure chromosome names are characters.
+    ref_genome[, 1] = as.character(ref_genome[, 1])
+    chr_lens = setNames(ref_genome[, 2], ref_genome[, 1])
+    chrs_used = set_chrs_used(chrs_used, ref_genome)
+    chrs_shown = set_chrs_shown(chrs_used, chrs_shown)
+
+    # Compute the cumulative chromosomal coordinate for each chromosome.
+    chr_coord_offset = c(0, cumsum(chr_lens[chrs_used])[-length(chrs_used)])
+    names(chr_coord_offset) = chrs_used
+
+    # Subset cn_bedgraph to coordinates actually to be plotted. Set yrange using
+    # subsetted copy number data.
+    xlim = set_xlim(xlim, chrs_shown, chr_lens)
     if (!is.null(cn_bedgraph)) {
-        cn = cn_bedgraph[cn_bedgraph[, 1] %in% chrs, ]
-    } else if (!is.null(segments)) {
-    } else {
-        stop("Either cn_bedgraph or segments must be provided")
+        plotted_cn = subset_cn_bedgraph(cn_bedgraph, chrs_shown, xlim)
     }
-    
+    if (is.null(yrange)) {
+        yrange = compute_yrange(plotted_cn)
+    }
+
     # Set CN window size dynamically
     if (is.null(cn_win_size)) {
-        if (is.null(xlim) || xlim[2] - xlim[1] >= 1e+07) {
-            cn_win_size = 10000
-        } else if (xlim[2] - xlim[1] >= 1e+06) {
-            cn_win_size = 1000
-        } else {
-            cn_win_size = 500
-        }
+        cn_win_size = set_cn_win_size(xlim)
     }
-    
+
+    xrange_size = cumsum(chr_lens[chrs_used])  # TODO(yl3): what is this?
     yrange_size = yrange[2] - yrange[1]
-    
-    td_col = "darkorange4"
-    del_col = "darkslateblue"
-    tail_tail_col = "cadetblue4"
-    head_head_col = "chartreuse2"
-    # td_col = '#E41A1C' del_col = '#1E90FF' head_head_col = '#9932CC' tail_tail_col
-    # = '#4DAF4A' inter_chrs_col = 'darkorchid1'
-    
+
     # Create the plot par(mar = c(5, 4, 2, 2) + .1)
     layout(matrix(c(rep(1, 7), 2)))
     par(mar = c(0, 4, 4, 4) + 0.1, oma = c(5 + 0.1, 0, 0, 0))
