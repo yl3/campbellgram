@@ -182,9 +182,11 @@ set_cn_win_size = function(xlim) {
 make_campbellgram_outline = function(cn_yrange, xlim, main, chr_lens) {
     par(mar = c(5, 4, 2, 2) + .1)
 
-    cn_yrange_size = cn_yrange[2] - cn_yrange[1]
+    # Some HARDCODED variables. See also function draw_sv_arc().
     ideogram_width = cn_yrange_size / 10  # Space allocated for an ideogram.
     SV_region_width = 1.4 * cn_yrange_size  # Space allocated for SV arcs.
+
+    cn_yrange_size = cn_yrange[2] - cn_yrange[1]
 
     # Add space in the plot for SV junctions and the ideogram
     plot_yrange = c(cn_yrange[1] - ideogram_width,
@@ -312,6 +314,89 @@ add_cn_segs_to_campbellgram = function(segments, chrs_shown, cn_yrange,
 }
 
 
+#' Helper function for colouring SVs based on breakpoint orientations.
+#'
+#' @param low_end_dir Breakpoint direction for SV's low end, "+" or "-".
+#' @param high_end_dir Breakpoint direction for SV's high end, "+" or "-".
+#' @param arc_cols Arc colours - a vector with colour values for keys "td_col",
+#'   "del_col", "tail_tail_col" and "head_head_col".
+choose_sv_colour = function(low_end_dir, high_end_dir, arc_cols) {
+    switch(
+        paste(low_end_dir, high_end_dir, sep = ""),
+        "++" = arc_cols["tail_tail_col"],
+        "+-" = arc_cols["del_col"],
+        "-+" = arc_cols["td_col"],
+        "--" = arc_cols["head_head_col"]
+    )
+}
+
+
+#' Add alpha to a vector of colours.
+add_alpha = function(col, alpha, max = 255) {
+    rgb(t(col2rgb(col)), alpha = alpha, max = max)
+}
+
+
+#' Helper function for drawing different types of SV arcs.
+#'
+#' Also draws vertical segments for each SV arc.
+draw_sv_arc = function(sv_bedpe, chr_coord_offset, arc_cols, cn_yrange, lwd) {
+    # Some HARDCODED variables. See also function make_campbellgram_outline().
+    inv_sv_pos_multiplier = 0.3
+    noninv_sv_pos_multiplier = 0.75
+    arc_radius_multiplier = 0.2
+
+    cn_yrange_size = diff(cn_yrange)
+
+    # Extract some values from the SV BEDPE table.
+    chrom_l = sv_bedpe[, 1]
+    chrom_h = sv_bedpe[, 4]
+    bkpt_pos_l = rowMeans(sv_bedpe[, 2:3])
+    bkpt_pos_h = rowMeans(sv_bedpe[, 5:6])
+    dir_l = bedpe[, 9]
+    dir_h = bedpe[, 10]
+    sv_col = choose_sv_colour(sv_bedpe[, 9], sv_bedpe[, 10], arc_cols)
+
+    # Draw arcs.
+    arc_y_pos = ifelse(dir_l == dir_h,
+                       cn_yrange[2] + inv_sv_pos_multiplier * cn_yrange_size,
+                       cn_yrange[2] + noninv_sv_pos_multiplier * cn_yrange_size)
+    arc(
+        x0 = chr_coord_offset[chrom_l] + bkpt_pos_l,
+        x1 = chr_coord_offset[chrom_h] + bkpt_pos_h,
+        y = arc_y_pos,
+        yr = ifelse(dir_h, 1, -1) * arc_radius_multiplier * cn_yrange_size,
+        col = sv_col,
+        lwd = lwd
+    )
+
+    # Draw segments going into the CN region.
+    segments(
+        x0 = c(
+            chr_coord_offset[chrom_l] + bkpt_pos_l,
+            chr_coord_offset[chrom_h] + bkpt_pos_h
+        ),
+        y0 = rep(arc_y_pos, 2),
+        y1 = cn_yrange[1],
+        col = add_alpha(rep(sv_col, 2), 127),
+        lwd = lwd
+    )
+}
+
+
+#' Helper function for drawing intra-chromosomal SV arcs.
+draw_intrachr_sv_arc = function(sv_bedpe, chrs_used, chr_coord_offset, arc_cols,
+                                lwd) {
+    idx = (sv_bedpe[, 1] %in% chrs_used
+           & sv_bedpe[, 4] %in% chrs_used)
+    if (sum(idx) == 0) {
+        return()
+    }
+    sv_bedpe = sv_bedpe[idx, ]
+    draw_sv_arc(sv_bedpe, chr_coord_offset, arc_cols, cn_yrange, lwd)
+}
+
+
 #' Plot a campbellgram
 #'
 #' Generate a campbellgram with rearrangement junctions at the top of the panel,
@@ -379,6 +464,8 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
     chr_lens = setNames(ref_genome[, 2], ref_genome[, 1])
     chrs_used = set_chrs_used(chrs_used, ref_genome)
     chrs_shown = set_chrs_shown(chrs_used, chrs_shown)
+    bedpe[, 1] = as.character(bedpe[, 1])
+    bedpe[, 4] = as.character(bedpe[, 4])
 
     # Compute the cumulative chromosomal coordinate for each chromosome.
     chr_coord_offset = c(0, cumsum(chr_lens[chrs_used])[-length(chrs_used)])
@@ -402,8 +489,6 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
         cn_win_size = set_cn_win_size(xlim)
     }
 
-    xrange_size = cumsum(chr_lens[chrs_used])  # TODO(yl3): what is this?
-
     # Create the campbellgram plot outline.
     make_campbellgram_outline(cn_yrange, xlim, main, chr_lens)
 
@@ -417,28 +502,8 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
                                     chr_coord_offset, lwd)
     }
 
-    # Plot rearrangements: First dotted lines
-    # Then 'intra-chromosomal' translocations
-    sel = bedpe[, 1] %in% chrs & bedpe[, 4] %in% chrs
-    col = ifelse(bedpe[sel, 9] == "+" & bedpe[sel, 10] == "+", head_head_col, ifelse(bedpe[sel,
-        9] == "+" & bedpe[sel, 10] == "-", del_col, ifelse(bedpe[sel, 9] == "-" &
-        bedpe[sel, 10] == "+", td_col, tail_tail_col)))
-
-    if (sum(sel) > 0) {
-        arc(x0 = chr_coord_offset[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel, 2:3]),
-            x1 = chr_coord_offset[as.character(bedpe[sel, 4])] + rowMeans(bedpe[sel, 5:6]),
-            y = ifelse(bedpe[sel, 9] == bedpe[sel, 10], yrange[2] + 0.3 * yrange_size,
-                yrange[2] + 0.75 * yrange_size), yr = ifelse(bedpe[sel, 10] == "-",
-                1, -1) * 0.2 * yrange_size, col = col, lwd = lwd)
-        segments(x0 = chr_coord_offset[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel,
-            2:3]), y0 = yrange[2] + ifelse(col %in% c(del_col, td_col), 0.75 * yrange_size,
-            0.3 * yrange_size), y1 = yrange[1], col = rgb(t(col2rgb(col)), alpha = 127,
-            max = 255), lwd = lwd)
-        segments(x0 = chr_coord_offset[as.character(bedpe[sel, 4])] + rowMeans(bedpe[sel,
-            5:6]), y0 = yrange[2] + ifelse(col %in% c(del_col, td_col), 0.75 * yrange_size,
-            0.3 * yrange_size), y1 = yrange[1], col = rgb(t(col2rgb(col)), alpha = 127,
-            max = 255), lwd = lwd)
-    }
+    # Draw SVs where both breakpoints are in chrs_used.
+    draw_intrachr_sv_arc(bedpe, chrs_used, chr_coord_offset, ARC_COLS, lwd)
 
     # Then rearrangments where low end %in% chrs and !(high end %in% chrs)
     sel = bedpe[, 1] %in% chrs & !(bedpe[, 4] %in% chrs)
