@@ -9,3 +9,7 @@ Encoding: UTF-8
 LazyData: true
 Imports:
 	quantsmooth
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
