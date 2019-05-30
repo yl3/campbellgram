@@ -96,16 +96,21 @@ set_chrs_used = function(chrs_used, ref_genome) {
 }
 
 
-#' Helper function for setting chrs_shown based on provided parameter values.
+#' @describeIn campbellgram Helper function for setting chrs_shown based on
+#'   provided parameter values.
 #'
-#' Also performs additional validations.
+#' Also performs additional validations. Currently either all chrs_used
+#' chromosomes are shown, or one of the chromosomes in chrs_used.
 set_chrs_shown = function(chrs_used, chrs_shown) {
     if (length(chrs_shown) > 1) {
-        stop("Parameter 'chrs_shown' must be of length 1.")
+        stop("Currently parameter 'chrs_shown' must be of length 1.")
     }
     if (is.null(chrs_shown)) {
         return(chrs_used)
     } else {
+        if (!(chrs_shown %in% chrs_used)) {
+            stop("'chrs_shown' is not in 'chrs_used'.")
+        }
         return(as.character(chrs_shown))
     }
 }
@@ -397,7 +402,235 @@ draw_intrachr_sv_arc = function(sv_bedpe, chrs_used, chr_coord_offset, arc_cols,
 }
 
 
-#' Plot a campbellgram
+#' Draw inter-chromosomal rearrangements at specified locations.
+draw_interchr_sv_arc = function(chr_coord_offset, sv_chr, sv_chr_pos, sv_dir,
+                                cn_yrange, lwd) {
+    yrange_size = diff(cn_yrange)
+    x = chr_coord_offset[sv_chr] + sv_chr_pos
+    x_delta = ifelse(sv_dir == "+", -1, +1) * diff(par("usr")[1:2]) / 50
+    seg_bot = yrange[1]
+    seg_top = yrange[2] + yrange_size
+    y_delta = seg_top + ifelse(sv_dir == "+", 1.1, 1.3) * yrange_size
+    transparent_black = rgb(t(col2rgb("black")), alpha = 127, max = 255)
+    segments(x0 = x, y0 = seg_bot, y1 = seg_top, col = transparent_black,
+             lwd = lwd)
+    segments(x0 = x, y0 = seg_top, x1 = x + x_delta, y1 = y_delta, xpd = T)
+}
+
+
+#' Find inter-chromosomal SVs from BEDPE and plot them.
+draw_interchr_sv_from_bedpe = function(sv_bedpe, chrs_used,
+                                       chr_coord_offset, cn_yrange, lwd) {
+    chr_low = sv_bedpe[, 1]
+    chr_high = sv_bedpe[, 4]
+
+    # Find the low end inter-chromosomal SVs.
+    is_inter_chr_low_end = chr_low %in% chrs_used & !(chr_high %in% chrs_used)
+    chrom = chr_low[is_inter_chr_low_end]
+    pos = rowMeans(sv_bedpe[is_inter_chr_low_end, 2:3])
+    dir = sv_bedpe[is_inter_chr_low_end, 9]
+
+    # Append the additional high end inter-chromosomal SVs.
+    is_inter_chr_high_end = chr_high %in% chrs_used & !(chr_low %in% chrs_used)
+    chrom = c(chrom, chr_high[is_inter_chr_high_end])
+    pos = c(pos, rowMeans(sv_bedpe[is_inter_chr_high_end, 5:6]))
+    dir = c(dir, sv_bedpe[is_inter_chr_high_end, 10])
+
+    # Draw the inter-chromosomal lines.
+    draw_interchr_sv_arc(chr_coord_offset, chrom, pos, dir, cn_yrange, lwd)
+}
+
+
+#' Add annotations to the top of campbellgram.
+#'
+#' Draws line segments and adds a text annotation for each BED entry.
+#'
+#' @param annot an annotation data frame in BED format.
+#' @param chrs_used see ?campbellgram.
+#' @param chr_coord_offset see ?campbellgram.
+#' @param cn_yrange Range for copy number to be displayed.
+add_annotations = function(annot, chrs_used, chr_coord_offset, cn_yrange) {
+    if (is.null(annot) || sum(annot[, 1] %in% chrs_used) == 0) {
+        return()
+    }
+    yrange_size = cn_yrange[2] - cn_yrange[1]
+    chrom = as.character(annot[, 1])
+    idx = chrom %in% chrs_used
+    x_start = chr_coord_offset[chrom[idx]] + annot[idx, 2]
+    x_end = chr_coord_offset[chrom[idx]] + annot[idx, 3]
+
+    # The Y-axis coordinate of the annotation line segments. This depends on a
+    # HARDCODED multiplier. See also make_campbellgram_outline()
+    OFFSET = 1.1
+    segs_y_coords = (cn_yrange[2]  +  (1 + OFFSET) * yrange_size
+                     + 0.05 * (0:sum(idx) - 1) * yrange_size)
+    text_y_coords = (cn_yrange[2]  +  (1 + 2 * OFFSET) * yrange_size
+                     + 0.05 * (0:sum(idx) - 1) * yrange_size)
+    segments(x0 = x_start, x1 = x_end, y0 = segs_y_coords, lwd = 2)
+    text(x_start/2 + x_end/2, text_y_coords, labels = annot[idx, 4], xpd = T)
+}
+
+
+#' @describeIn campbellgram Plot a rainfall plot of mutation.
+#'
+#' @param mut_ylim ylim for mutations. Not that since mutations are plotted on
+#'   the log scale, the lower limit cannot be 0.
+add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
+                                      mut_col, plot_at = "seg",
+                                      mut_ylim = NULL) {
+    if (is.null(muts)) {
+        return()
+    }
+
+    plot_at = match.arg(plot_at)
+
+    # Set up some basic variables.
+    complement_of = c(A = "T", C = "G", G = "C", T = "A")
+    if (missing(mut_col)) {
+        mut_col = c("C>A" = "orange", "C>G" = "brown", "C>T" = "red",
+                    "T>A" = "purple", "T>C" = "pink", "T>G" = "lightgreen")
+    }
+
+    # Change all original nucleotides to the pyrimidine strand & prepare muts
+    # otherwise.
+    chrom = muts[, 1]
+    muts = muts[chrom %in% chrs_used, ]
+    is_purine = muts[, 3] %in% c("A", "G")
+    mut_type = ifelse(
+        is_purine,
+        paste(complement_of[muts[, 3]], complement_of[muts[, 4]], sep = ">"),
+        paste(muts[, 3], must[, 4], sep = ">"))
+    # Order based on chromosomal order in chrs_used.
+    chrom_order = setNames(1:length(chrs_used), chrs_used)
+    muts = muts[order(chrom_order[muts[, 1]], muts[, 2]), ]
+
+    # Compute the coordinates to be plotted.
+    pos = chr_coord_offset[chrom] + muts[, 2]
+    x0 = pos[-length(pos)]
+    x1 = pos[-1]
+    mut_dists = diff(pos)
+    # Mask "mutation distances" of mutations between chromosomes.
+    mut_dists[chrom[-1] != chrom[-length(chrom)]] = NA
+
+    # Add the mutations to the plot.
+    par(new = T)
+    xlim = par("usr")[1:2]
+
+    if (plot_at == "seg") {
+        # Create an empty plot and add the segments.
+        plot(pos, mut_dist, xlim = xlim, xaxs = "i", axes = F, xlab = "",
+             ylab = "", main = "", yaxt = "n", xaxt = "n", log = "y",
+             pch = NA, ylim = ylim)
+        segments(x0 = x0, x1 = x1, y0 = mut_dist, col = mut_col[mut_type])
+    } else {
+        pos_to_plot = if (plot_at == "first") x0 else x1
+        plot(pos_to_plot, mut_dist, xlim = xlim, xaxs = "i", axes = F,
+             xlab = "", ylab = "", main = "", yaxt = "n", xaxt = "n", log = "y",
+             col = mut_col[mut_type], pch = 16, ylim = ylim)
+        legend("topleft", bty = "n", pch = 16, col = mut_col,
+               legend = names(mut_col), ncol = 2)
+    }
+    axis(4)
+}
+
+
+#' @describeIn add_xlab_and_ticks Helper function for adding the X axis
+#'   (chromosome name) labels.
+add_xlab = function(xlim, chrs_used, chrs_shown) {
+    par(mgp = par("mgp") + c(0, 1, 0))
+    if (all(xlim == c(1, sum(chr_lens[chrs_used])))) {
+        # xlim encompasses all chromosomes in chrs_used.
+        label_pos = (cumsum(chr_lens[chrs_used]) + chr_coord_offset) / 2
+        labels = ifelse(rep(xaxt, length(chrs_used)),
+                        paste("chr", chrs_used, " position (Mb)", sep = ""),
+                        chrs_used)
+        axis(1, at = label_pos, labels = labels, tick = F, cex.lab = 1.5)
+    } else {
+        # We are here when xlim does not cover all chromosomes in chrs_used. In
+        # this case only one chromosome is shown either through chrs_shown or
+        # chrs_used.
+        if (!is.null(chrs_shown)) {
+            label = paste("chr", chrs_shown, " position (Mb)", sep = "")
+        } else {
+            label = paste("chr", chrs_used, " position (Mb)", sep = "")
+        }
+        axis(1, at = mean(xlim), labels = label, tick = F, cex.lab = 1.5)
+    }
+    par(mgp = par("mgp") - c(0, 1, 0))
+}
+
+
+#' @descrbeIn add_xlab_and_xticks add_xticks
+add_xticks = function(plot_xaxt, chrs_used, chrs_shown, chr_coord_offset) {
+    if (all(xlim == c(1, sum(chr_lens[chrs_used])))) {
+        # xlim encompasses all chromosomes in chrs_used.
+        if (length(chrs_used) > 1) {
+            for (c in chrs_used) {
+                pretty_ticks = pretty(c(1, chr_lens[c]))
+                pretty_ticks = pretty_ticks[which(pretty_ticks < chr_lens[c])]
+                axis(1, at = pretty_ticks + chr_coord_offset[c],
+                     labels = pretty_ticks / 1e6)
+            }
+        } else {
+            tick_pos = axisTicks(usr = c(1, chr_lens[chrs_used]), log = F)
+            axis(1, at = tick_pos, labels = tick_pos / 1e6)
+        }
+    } else {
+        # We are here when xlim does not cover all chromosomes in chrs_used. In
+        # this case only one chromosome is shown either through chrs_shown or
+        # chrs_used.
+        if (!is.null(chrs_shown)) {
+            tick_pos = pretty(xlim - chr_coord_offset[chrs_shown])
+            axis(1, at = tick_pos + chr_coord_offset[chrs_shown],
+                 labels = tick_pos / 1e6)
+        } else {
+            tick_pos = pretty(xlim)
+            axis(1, at = tick_pos, labels = tick_pos / 1e6)
+        }
+    }
+}
+
+
+#' @describeIn campbellgram Add X axis ticks.
+#'
+#' @param xlim the current X-axis coordinate limits.
+#' @param chrs_used see ?campbellgram.
+#' @param chrs_shown see ?campbellgram.
+#' @param plot_xaxt see ?campbellgram.
+add_xlab_and_xticks = function(xlim, chrs_used, chrs_shown, plot_xaxt,
+                               chr_coord_offset) {
+    add_xlab(xlim, chrs_used, chrs_shown)
+    if (plot_xaxt) {
+        add_xticks(plot_xaxt, chrs_used, chrs_shown, chr_coord_offset)
+    }
+}
+
+
+#' @describeIn campbellgram Helper function for adding an ideogram to a
+#'   campbellgram.
+add_ideogram = function(xlim, chrs_used, cn_yrange) {
+    if (xlim[2] - xlim[1] < 1e7) {
+        message("Ideogram plotting disabled because xlim[2] - xlim[1] < 1e7")
+        ideogram = F
+    }
+    if (ideogram) {
+        cn_yrange_size = cn_yrange[2] - cn_yrange[1]
+        # Currently, ideogram_width is a constant that's set to
+        # cn_yrange_size / 10. See make_campbellgram_outline().
+        ideogram_top = cn_yrange[1] - cn_yrange_size / 100
+        ideogram_width = cn_yrange_size * 9 / 100
+        for (chrom in chrs_used) {
+            ideogram_xy = c(1 + chr_coord_offset[chrom], -ideogram_width)
+            quantsmooth::paintCytobands(
+                chrom, pos = ideogram_xy, units = "bases",
+                width = ideogram_width, length.out = chr_lens[c],
+                legend = F, xpd = NA)
+        }
+    }
+}
+
+
+#' Plot a campbellgram.
 #'
 #' Generate a campbellgram with rearrangement junctions at the top of the panel,
 #' and optionally absolute copy number, copy number segmentation, B allele
@@ -448,13 +681,25 @@ draw_intrachr_sv_arc = function(sv_bedpe, chrs_used, chr_coord_offset, arc_cols,
 #' @param arc_cols named vector with labels "td_col", "del_col", "tail_tail_col"
 #'   and "head_head_col" for the colors of the arcs of different rearrangement
 #'   junction orientations.
+#' @param cn_cex marker size (see \code{?par}) for CN dots.
+#' @param lwd line width for all SV arcs and other line segments.
+#' @param muts a 'data.frame' object with the following columns: chromosome,
+#'   position, base mutated from, base mutated to. Bases must be in
+#'   {A, C, G, T}.
+#' @param mut_col a vector of >= 6 colours for C>A, C>G, C>T, T>A, T>C and T>G
+#'   mutations. Default: c("orange", "brown", "red", "purple", "pink",
+#'   "lightgreen").
+#' @param plot_mut_at whether to X-axis coordinates of the mutation distance
+#'   data points at the chromosomal location of the first mutation ("first"),
+#'   second mutation ("second") or as a line segment between the two mutations
+#'   ("seg"; default).
+#' @param plot_xaxt whether to plot X axis ticks or not.
 campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
                         xlim = NULL, cn_bedgraph = NULL, segments = NULL,
                         cn_yrange = NULL, ideogram = NULL, cn_win_size = NULL,
                         arc_cols = ARC_COLS, cn_cex = 0.3, lwd = 0.75,
-                        arrow_ln = 0.15, annot = NULL, main = NULL, muts = NULL,
-                        allele_freqs = NULL, allele_freq_segments = NULL,
-                        xaxt = T) {
+                        annot = NULL, main = NULL, muts = NULL, mut_col = NULL,
+                        plot_mut_at = "seg", mut_ylim, plot_xaxt = T) {
     # Internally, the X-axis is composed of all chromosomes in chrs_used stacked
     # side by side. The actual part of the chromosome shown is controlled by
     # chrs_displ and/or xlim.
@@ -466,6 +711,8 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
     chrs_shown = set_chrs_shown(chrs_used, chrs_shown)
     bedpe[, 1] = as.character(bedpe[, 1])
     bedpe[, 4] = as.character(bedpe[, 4])
+    annot[, 1] = as.character(annot[, 1])
+    muts[, 1] = as.character(muts[, 1])
 
     # Compute the cumulative chromosomal coordinate for each chromosome.
     chr_coord_offset = c(0, cumsum(chr_lens[chrs_used])[-length(chrs_used)])
@@ -505,138 +752,21 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
     # Draw SVs where both breakpoints are in chrs_used.
     draw_intrachr_sv_arc(bedpe, chrs_used, chr_coord_offset, ARC_COLS, lwd)
 
-    # Then rearrangments where low end %in% chrs and !(high end %in% chrs)
-    sel = bedpe[, 1] %in% chrs & !(bedpe[, 4] %in% chrs)
-    if (sum(sel) > 0) {
-        # arrows(
-        segments(x0 = chr_coord_offset[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel,
-            2:3]), y0 = yrange[1], y1 = yrange[2] + yrange_size, col = rgb(t(col2rgb("black")),
-            alpha = 127, max = 255), lwd = lwd)
-        segments(x0 = chr_coord_offset[as.character(bedpe[sel, 1])] + rowMeans(bedpe[sel,
-            2:3]), y0 = yrange[2] + yrange_size, x1 = chr_coord_offset[as.character(bedpe[sel,
-            1])] + rowMeans(bedpe[sel, 2:3]) + ifelse(bedpe[sel, 9] == "+", -1, +1) *
-            (par("usr")[2] - par("usr")[1])/50, y1 = ifelse(bedpe[sel, 9] == "+",
-            yrange[2] + 1.1 * yrange_size, yrange[2] + 1.3 * yrange_size), xpd = NA)
-        text(as.character(bedpe[sel, 4]), x = chr_coord_offset[as.character(bedpe[sel,
-            1])] + rowMeans(bedpe[sel, 2:3]) + ifelse(bedpe[sel, 9] == "+", -1, +1) *
-            (par("usr")[2] - par("usr")[1])/50, y = yrange[2] + ifelse(bedpe[sel,
-            9] == "+", 1.2, 1.4) * yrange_size, xpd = NA)
-    }
+    # Then SVs where one of the chromosomes %in% chrs_used.
+    draw_interchr_sv_from_bedpe(bedpe, chrs_used, chr_coord_offset,
+                                cn_yrange, lwd)
 
-    # Then rearrangments where high end %in% chrs and !(low end %in% chrs)
-    sel = !(bedpe[, 1] %in% chrs) & bedpe[, 4] %in% chrs
-    if (sum(sel) > 0) {
-        # arrows(
-        segments(x0 = chr_coord_offset[as.character(bedpe[sel, 4])] + rowMeans(bedpe[sel,
-            5:6]), y0 = yrange[1], y1 = yrange[2] + yrange_size, col = rgb(t(col2rgb("black")),
-            alpha = 127, max = 255), lwd = lwd)
-        segments(x0 = chr_coord_offset[as.character(bedpe[sel, 4])] + rowMeans(bedpe[sel,
-            5:6]), y0 = yrange[2] + yrange_size, x1 = chr_coord_offset[as.character(bedpe[sel,
-            4])] + rowMeans(bedpe[sel, 5:6]) + ifelse(bedpe[sel, 10] == "+", -1,
-            +1) * (par("usr")[2] - par("usr")[1])/50, y1 = ifelse(bedpe[sel, 10] ==
-            "+", yrange[2] + 1.1 * yrange_size, yrange[2] + 1.3 * yrange_size), xpd = NA)
-        text(as.character(bedpe[sel, 1]), x = chr_coord_offset[as.character(bedpe[sel,
-            4])] + rowMeans(bedpe[sel, 5:6]) + ifelse(bedpe[sel, 10] == "+", -1,
-            +1) * (par("usr")[2] - par("usr")[1])/50, y = yrange[2] + ifelse(bedpe[sel,
-            10] == "+", 1.2, 1.4) * yrange_size, xpd = NA)
-    }
-
-
-    # Annotations on top
-    if (!is.null(annot) && sum(annot[, 1] %in% chrs > 0)) {
-        sel = annot[, 1] %in% chrs
-        segments(x0 = chr_coord_offset[as.character(annot[sel, 1])] + annot[sel, 2], y0 = 1.1 *
-            yrange_size + yrange[2] + (0:(sum(annot[, 1] %in% chrs) - 1)) * 0.05 *
-            yrange_size, x1 = chr_coord_offset[as.character(annot[sel, 1])] + annot[sel,
-            3], lwd = 2)
-
-        text(chr_coord_offset[as.character(annot[sel, 1])] + rowMeans(annot[sel, 2:3]),
-            1.2 * yrange_size + yrange[2] + (0:(sum(annot[, 1] %in% chrs) - 1)) *
-                0.05 * yrange_size, labels = annot[sel, 4], xpd = NA)
-    }
-
+    # Add gene/genomic location annotations on top.
+    add_annotations(annot, chrs_used, chr_coord_offset, cn_yrange)
 
     # Plot point mutations?
-    if (!is.null(muts)) {
-        rc = c(A = "T", C = "G", G = "C", T = "A")
-        muts = muts[muts[, 1] %in% chrs, ]
-        muts[, 4] = ifelse(muts[, 3] %in% c("A", "G"), rc[muts[, 4]], muts[, 4])
-        muts[, 3] = ifelse(muts[, 3] %in% c("A", "G"), rc[muts[, 3]], muts[, 3])
-        mut_col = c(`C>A` = "orange", `C>G` = "brown", `C>T` = "red", `T>A` = "purple",
-            `T>C` = "pink", `T>G` = "lightgreen")
-
-        muts = muts[order(muts[, 1], muts[, 2]), ]
-        dist_to_next = c(muts[-1, 2] - muts[-nrow(muts), 2])
-        dist_to_next[muts[-1, 1] != muts[-nrow(muts), 1]] = NA
-        dist_to_next = c(dist_to_next, NA)
-
-        xlim = par("usr")[1:2]
-        par(new = T)
-        pos = chr_coord_offset[as.character(muts[, 1])] + muts[, 2]
-        plot(pos, dist_to_next, xlim = xlim, xaxs = "i", axes = F, xlab = "", ylab = "",
-            main = "", yaxt = "n", xaxt = "n", log = "y", col = mut_col[paste(muts[,
-                3], muts[, 4], sep = ">")], pch = 16, ylim = c(1, 1e+07))
-        axis(4)
-
-        legend("topleft", bty = "n", pch = 16, col = mut_col, legend = names(mut_col),
-            ncol = 2)
-    }
+    add_mutation_rainfall_plot(muts, chrs_used, chr_coord_offset, mut_col,
+                               plot_at, mut_ylim)
 
 
-    # X axis names and ticks
-    par(mgp = par("mgp") + c(0, 1, 0))
-    if (all(xlim == c(1, sum(chr_lens[chrs])))) {
-        axis(1, at = (cumsum(chr_lens[chrs]) + chr_coord_offset)/2, labels = ifelse(rep(xaxt,
-            length(chrs)), paste("chr", chrs, " position (Mb)", sep = ""), chrs),
-            tick = F, cex.lab = 1.5)
-    } else if (!is.null(chr_lim)) {
-        axis(1, at = mean(xlim), labels = paste("chr", chr_lim, " position (Mb)",
-            sep = ""), tick = F, cex.lab = 1.5)
-    } else {
-        axis(1, at = mean(xlim), labels = paste("chr", chrs, " position (Mb)", sep = ""),
-            tick = F, cex.lab = 1.5)
-    }
-    par(mgp = par("mgp") - c(0, 1, 0))
+    # Add X axis names and ticks.
+    add_xlab_and_xticks = function(xlim, chrs_used, chrs_shown, plot_xaxt)
 
-    if (xaxt) {
-        if (length(chrs) > 1) {
-            if (all(xlim == c(1, sum(chr_lens[chrs])))) {
-                for (c in chrs) {
-                  pretty_ticks = pretty(c(1, chr_lens[c]))
-                  pretty_ticks = pretty_ticks[which(pretty_ticks < chr_lens[c])]
-                  axis(1, at = pretty_ticks + chr_coord_offset[c], labels = pretty_ticks/1e+06)
-                }
-            } else {
-                if (is.null(chr_lim) || !(chr_lim %in% names(chr_lens))) {
-                  stop()
-                }
-
-                pretty_ticks = pretty(xlim - chr_coord_offset[chr_lim])
-
-                axis(1, at = pretty_ticks + chr_coord_offset[chr_lim], labels = pretty_ticks/1e+06)
-            }
-        } else {
-            if (all(xlim == c(1, sum(chr_lens[chrs])))) {
-                axis(1, at = axisTicks(usr = c(1, chr_lens[chrs]), log = F), labels = axisTicks(usr = c(1,
-                  chr_lens[chrs]), log = F)/1e+06)
-            } else {
-                pretty_ticks = pretty(xlim)
-                axis(1, at = pretty_ticks, labels = pretty_ticks/1e+06)
-            }
-        }
-    }
-
-
-    # Finally the ideogram
-    if (xlim[2] - xlim[1] < 1e+07) {
-        print("Ideogram plotting disabled because xlim[2] - xlim[1] < 10e6")
-
-        ideogram = F
-    }
-    if (ideogram) {
-        for (c in chrs) {
-            quantsmooth::paintCytobands(c, pos = c(1 + chr_coord_offset[c], -0.1), units = "bases",
-                width = 0.5, length.out = chr_lens[c], legend = F, xpd = NA)
-        }
-    }
+    # Finally add the ideogram.
+    add_ideogram(xlim, chrs_used, cn_yrange)
 }
