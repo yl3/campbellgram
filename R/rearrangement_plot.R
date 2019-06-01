@@ -187,7 +187,7 @@ set_cn_win_size = function(xlim) {
 #' @export
 make_campbellgram_outline = function(cn_yrange, xlim, main, chr_lens,
                                      chrs_shown) {
-    par(mar = c(5, 4, 2, 2) + .1)
+    par(mar = c(5, 4, 4, 4) + .1)
     cn_yrange_size = cn_yrange[2] - cn_yrange[1]
 
     # Some HARDCODED variables. See also function draw_sv_arc().
@@ -367,6 +367,8 @@ draw_sv_arc = function(sv_bedpe, chr_coord_offset, arc_cols, cn_yrange, lwd) {
     dir_l = sv_bedpe[, 9]
     dir_h = sv_bedpe[, 10]
     sv_col = choose_sv_colour(sv_bedpe[, 9], sv_bedpe[, 10], arc_cols)
+    y_radius =
+        ifelse(dir_h == "+", 1, -1) * arc_radius_multiplier * cn_yrange_size
 
     # Draw arcs.
     arc_y_pos = ifelse(dir_l == dir_h,
@@ -376,7 +378,7 @@ draw_sv_arc = function(sv_bedpe, chr_coord_offset, arc_cols, cn_yrange, lwd) {
         x0 = chr_coord_offset[chrom_l] + bkpt_pos_l,
         x1 = chr_coord_offset[chrom_h] + bkpt_pos_h,
         y = arc_y_pos,
-        yr = ifelse(dir_h, 1, -1) * arc_radius_multiplier * cn_yrange_size,
+        yr = y_radius,
         col = sv_col,
         lwd = lwd
     )
@@ -416,7 +418,7 @@ draw_interchr_sv_arc = function(chr_coord_offset, sv_chr, sv_chr_pos, sv_dir,
     x_delta = ifelse(sv_dir == "+", -1, +1) * diff(par("usr")[1:2]) / 50
     seg_bot = cn_yrange[1]
     seg_top = cn_yrange[2] + cn_yrange_size
-    y_delta = seg_top + ifelse(sv_dir == "+", 1.1, 1.3) * cn_yrange_size
+    y_delta = seg_top + ifelse(sv_dir == "+", 0.1, 0.3) * cn_yrange_size
     transparent_black = rgb(t(col2rgb("black")), alpha = 127, max = 255)
     segments(x0 = x, y0 = seg_bot, y1 = seg_top, col = transparent_black,
              lwd = lwd)
@@ -512,15 +514,17 @@ add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
     # Change all original nucleotides to the pyrimidine strand & prepare muts
     # otherwise.
     chrom = muts[, 1]
-    muts = muts[chrom %in% chrs_used, ]
+    idx = chrom %in% chrs_used
+    muts = muts[idx, ]
+    chrom = chrom[idx]
     is_purine = muts[, 3] %in% c("A", "G")
     mut_type = ifelse(
         is_purine,
         paste(complement_of[muts[, 3]], complement_of[muts[, 4]], sep = ">"),
         paste(muts[, 3], muts[, 4], sep = ">"))
     # Order based on chromosomal order in chrs_used.
-    chrom_order = setNames(1:length(chrs_used), chrs_used)
-    muts = muts[order(chrom_order[muts[, 1]], muts[, 2]), ]
+    # chrom_order = setNames(1:length(chrs_used), chrs_used)
+    # muts = muts[order(chrom_order[muts[, 1]], muts[, 2]), ]
 
     # Compute the coordinates to be plotted.
     pos = chr_coord_offset[chrom] + muts[, 2]
@@ -537,9 +541,7 @@ add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
 
     plot(pos, mut_dist_harmonic_means, xlim = xlim, xaxs = "i", axes = F,
          xlab = "", ylab = "", main = "", yaxt = "n", xaxt = "n", log = "y",
-         col = mut_col[mut_type], pch = 16, ylim = mut_ylim)
-    legend("topleft", bty = "n", pch = 16, col = mut_col,
-           legend = names(mut_col), ncol = 2)
+         col = mut_col[mut_type], pch = 16, ylim = mut_ylim, cex = 0.75)
     axis(4)
 }
 
