@@ -7,8 +7,8 @@
 ARC_COLS = c(
     td_col = "darkorange4",
     del_col = "darkslateblue",
-    tail_tail_col = "cadetblue4",
-    head_head_col = "chartreuse2"
+    head_head_col = "chartreuse2",
+    tail_tail_col = "cadetblue4"
 )
 
 
@@ -44,7 +44,7 @@ draw_arcs = function(x0, x1, y, yr, col, lwd) {
     xr = x - x0  # x-radius of arc
     mapply_args = append(
         list(FUN = draw_arc),
-        as.list(data.frame(x, y, xr, yr, col, lwd))
+        as.list(data.frame(x, y, xr, yr, col, lwd, stringsAsFactors = F))
     )
     do.call(mapply, mapply_args)
 }
@@ -231,6 +231,10 @@ make_campbellgram_outline = function(cn_yrange, xlim, main, chr_lens,
         lty = 3
     )
     abline(h = cn_yrange[2] + 0.5)
+
+    # Add Y-axis label and Y-axis ticks.
+    axis(2, at = axisTicks(usr = cn_yrange, log = F), las = 2)
+    mtext("Copy number", side = 2, line = 2, at = mean(cn_yrange))
 }
 
 
@@ -283,10 +287,6 @@ add_cns_to_campbellgram = function(chrs_shown, cn_win_size, plotted_cn,
             points(x, y, pch = 16, cex = cn_cex)
         }
     }
-
-    # Add Y-axis label and Y-axis ticks.
-    axis(2, at = axisTicks(usr = cn_yrange, log = F), las = 2)
-    mtext("Copy number", side = 2, line = 1, at = mean(cn_yrange))
 }
 
 
@@ -366,14 +366,14 @@ draw_sv_arc = function(sv_bedpe, chr_coord_offset, arc_cols, cn_yrange, lwd) {
     bkpt_pos_h = rowMeans(sv_bedpe[, 5:6])
     dir_l = sv_bedpe[, 9]
     dir_h = sv_bedpe[, 10]
-    sv_col = choose_sv_colour(sv_bedpe[, 9], sv_bedpe[, 10], arc_cols)
-    y_radius =
-        ifelse(dir_h == "+", 1, -1) * arc_radius_multiplier * cn_yrange_size
-
-    # Draw arcs.
+    sv_col = choose_sv_colour(dir_l, dir_h, arc_cols)
     arc_y_pos = ifelse(dir_l == dir_h,
                        cn_yrange[2] + inv_sv_pos_multiplier * cn_yrange_size,
                        cn_yrange[2] + noninv_sv_pos_multiplier * cn_yrange_size)
+    y_radius =
+        ifelse(dir_h == "-", 1, -1) * arc_radius_multiplier * cn_yrange_size
+
+    # Draw arcs.
     draw_arcs(
         x0 = chr_coord_offset[chrom_l] + bkpt_pos_l,
         x1 = chr_coord_offset[chrom_h] + bkpt_pos_h,
@@ -418,11 +418,14 @@ draw_interchr_sv_arc = function(chr_coord_offset, sv_chr, sv_chr_pos, sv_dir,
     x_delta = ifelse(sv_dir == "+", -1, +1) * diff(par("usr")[1:2]) / 50
     seg_bot = cn_yrange[1]
     seg_top = cn_yrange[2] + cn_yrange_size
-    y_delta = seg_top + ifelse(sv_dir == "+", 0.1, 0.3) * cn_yrange_size
+    y_delta = ifelse(sv_dir == "+", 0.1, 0.3) * cn_yrange_size
+    text_y_delta = ifelse(sv_dir == "+", 0.2, 0.4) * cn_yrange_size
     transparent_black = rgb(t(col2rgb("black")), alpha = 127, max = 255)
     segments(x0 = x, y0 = seg_bot, y1 = seg_top, col = transparent_black,
              lwd = lwd)
-    segments(x0 = x, y0 = seg_top, x1 = x + x_delta, y1 = y_delta, xpd = T)
+    segments(x0 = x, y0 = seg_top, x1 = x + x_delta, y1 = seg_top + y_delta,
+             xpd = T)
+    text(x + x_delta, seg_top + text_y_delta, sv_chr)
 }
 
 
@@ -543,6 +546,7 @@ add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
          xlab = "", ylab = "", main = "", yaxt = "n", xaxt = "n", log = "y",
          col = mut_col[mut_type], pch = 16, ylim = mut_ylim, cex = 0.75)
     axis(4)
+    mtext("Inter-mutation distance (bp)", 4, line = 2)
 }
 
 
@@ -771,17 +775,17 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
     # Add gene/genomic location annotations on top.
     add_annotations(annot, chrs_used, chr_coord_offset, cn_yrange)
 
-    # Plot point mutations?
-    if (!is.null(muts)) {
-        add_mutation_rainfall_plot(muts, chrs_used, chr_coord_offset, mut_col,
-                                   mut_ylim)
-    }
+    # Finally add the ideogram.
+    add_ideogram(ideogram, xlim, chr_lens, chrs_used, cn_yrange,
+                 chr_coord_offset)
 
     # Add X axis names and ticks.
     add_xlab_and_xticks(xlim, chrs_used, chrs_shown, chr_lens, chr_coord_offset,
                         plot_xaxt)
 
-    # Finally add the ideogram.
-    add_ideogram(ideogram, xlim, chr_lens, chrs_used, cn_yrange,
-                 chr_coord_offset)
+    # Plot point mutations? Needs to be done last since this changes the Y-axis!
+    if (!is.null(muts)) {
+        add_mutation_rainfall_plot(muts, chrs_used, chr_coord_offset, mut_col,
+                                   mut_ylim)
+    }
 }
