@@ -635,10 +635,10 @@ add_ideogram = function(ideogram, xlim, chr_lens, chrs_used, cn_yrange,
         cn_yrange_size = cn_yrange[2] - cn_yrange[1]
         # Currently, ideogram_width is a constant that's set to
         # cn_yrange_size / 10. See make_campbellgram_outline().
-        ideogram_top = cn_yrange[1] - cn_yrange_size / 100
+        ideogram_top = cn_yrange[1] + cn_yrange_size / 100
         ideogram_width = cn_yrange_size * 9 / 100
         for (chrom in chrs_used) {
-            ideogram_xy = c(1 + chr_coord_offset[chrom], -ideogram_width)
+            ideogram_xy = c(1 + chr_coord_offset[chrom], -ideogram_top)
             quantsmooth::paintCytobands(
                 chrom, pos = ideogram_xy, units = "bases",
                 width = ideogram_width, length.out = chr_lens[chrom],
