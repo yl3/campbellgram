@@ -538,8 +538,11 @@ add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
         c(intermut_dists, NA),
         c(NA, intermut_dists))
 
-    # Add the mutations to the plot.
-    par(new = T)
+    # Shrink the vertical height of the plot and add the mutations to the plot.
+    y_bottom_ndc = grconvertY(0, "user", "ndc")
+    y_top_ndc = grconvertY(par("usr")[4] - 0.05 * diff(par("usr")[3:4]), "user",
+                           "ndc")
+    par(plt = c(par("plt")[1:2], y_bottom_ndc, y_top_ndc), new = T)
     xlim = par("usr")[1:2]
 
     plot(pos, mut_dist_harmonic_means, xlim = xlim, xaxs = "i", axes = F,
