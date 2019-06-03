@@ -429,7 +429,7 @@ draw_interchr_sv_arc = function(chr_coord_offset, sv_chr, sv_chr_pos, sv_dir,
              lwd = lwd)
     segments(x0 = x, y0 = seg_top, x1 = x + x_delta, y1 = seg_top + y_delta,
              xpd = T)
-    text(x + x_delta, seg_top + text_y_delta, sv_chr)
+    text(x + x_delta, seg_top + text_y_delta, sv_chr, xpd = T)
 }
 
 
