@@ -80,7 +80,7 @@ window_means = function(coords, cns, min_pos, max_pos, win_size) {
         as.character(1:ceiling( (max_pos - min_pos + 1) / win_size ))
     ]
 
-    return(list(window_coords, window_means))
+    return(list(window_coords = window_coords, window_means = window_means))
 }
 
 
@@ -138,12 +138,13 @@ set_xlim = function(xlim, chrs_shown, chr_lens) {
 
 #' Subset cn_bedgraph to actually visible regions.
 subset_cn_bedgraph = function(cn_bedgraph, chrs_shown, xlim) {
+    chrom = cn_bedgraph[, 1] = as.character(cn_bedgraph[, 1])
     if (length(chrs_shown) == 1) {
-        idx = (cn_bedgraph[, 1] == chrs_shown
+        idx = (chrom == chrs_shown
                & cn_bedgraph[, 2] <= xlim[2]
                & cn_bedgraph[, 3] >= xlim[1])
     } else {
-        idx = cn_bedgraph[, 1] %in% chrs_shown
+        idx = chrom %in% chrs_shown
     }
     return(cn_bedgraph[idx, ])
 }
@@ -157,7 +158,7 @@ compute_cn_yrange = function(cn_bedgraph) {
         # values.
         return(c(0, 4))
     } else {
-        return(c(0, quantile(cn_bedgraph, p = 0.999, na.rm = T)))
+        return(c(0, quantile(cn_bedgraph[, 4], p = 0.999, na.rm = T)))
     }
 }
 
@@ -234,7 +235,7 @@ make_campbellgram_outline = function(cn_yrange, xlim, main, chr_lens,
 
     # Add Y-axis label and Y-axis ticks.
     axis(2, at = axisTicks(usr = cn_yrange, log = F), las = 2)
-    mtext("Copy number", side = 2, line = 2, at = mean(cn_yrange))
+    mtext("Copy number", side = 2, line = 2.5, at = mean(cn_yrange))
 }
 
 
@@ -250,8 +251,9 @@ make_campbellgram_outline = function(cn_yrange, xlim, main, chr_lens,
 #'   Names must include chromosomes in \emph{chrs_shown}.
 #'
 #' @export
-add_cns_to_campbellgram = function(chrs_shown, cn_win_size, plotted_cn,
-                                   cn_yrange, cn_cex, chr_coord_offset) {
+add_cns_to_campbellgram = function(chrs_shown, xlim, chr_lens, cn_win_size,
+                                   plotted_cn, cn_yrange, cn_cex,
+                                   chr_coord_offset) {
     is_zoomed = (length(chrs_shown) == 1
                  && !all(xlim == c(1, chr_lens[chrs_shown])))
     if (is_zoomed) {
@@ -283,7 +285,7 @@ add_cns_to_campbellgram = function(chrs_shown, cn_win_size, plotted_cn,
             )
             x = chr_coord_offset[chrom] + average_cn_by_window$window_coords
             y = average_cn_by_window$window_means
-            y = ifelse(y < cn_yrange | y > cn_yrange, NA, y)
+            y = ifelse(y < cn_yrange[1] | y > cn_yrange[2], NA, y)
             points(x, y, pch = 16, cex = cn_cex)
         }
     }
@@ -304,8 +306,9 @@ add_cns_to_campbellgram = function(chrs_shown, cn_win_size, plotted_cn,
 add_cn_segs_to_campbellgram = function(segments, chrs_shown, cn_yrange,
                                        chr_coord_offset, lwd,
                                        col = "mediumslateblue") {
+    segments[, 1] = as.character(segments[, 1])
     for (chrom in chrs_shown) {
-        idx = (segments[, 1] == chrs_shown
+        idx = (segments[, 1] == chrom
                & segments[, 4] >= cn_yrange[1]
                & segments[, 4] <= cn_yrange[2])
         if (any(idx)) {
@@ -313,7 +316,8 @@ add_cn_segs_to_campbellgram = function(segments, chrs_shown, cn_yrange,
                 x0 = chr_coord_offset[chrom] + segments[idx, 2] + 1,
                 x1 = chr_coord_offset[chrom] + segments[idx, 3],
                 y0 = segments[idx, 4],
-                col = col
+                col = col,
+                lwd = lwd
             )
         }
     }
@@ -759,8 +763,8 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
 
     # Plot CN data points and segments.
     if (!is.null(plotted_cn)) {
-        add_cns_to_campbellgram(cn_win_size, plotted_cn, cn_yrange, cn_cex,
-                                chr_coord_offset)
+        add_cns_to_campbellgram(chrs_shown, xlim, chr_lens, cn_win_size,
+                                plotted_cn, cn_yrange, cn_cex, chr_coord_offset)
     }
     if (!is.null(segments)) {
         add_cn_segs_to_campbellgram(segments, chrs_shown, cn_yrange,
