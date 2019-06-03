@@ -456,36 +456,6 @@ draw_interchr_sv_from_bedpe = function(sv_bedpe, chrs_used,
 }
 
 
-#' Add annotations to the top of campbellgram.
-#'
-#' Draws line segments and adds a text annotation for each BED entry.
-#'
-#' @param annot an annotation data frame in BED format.
-#' @param chrs_used see ?campbellgram.
-#' @param chr_coord_offset see ?campbellgram.
-#' @param cn_yrange Range for copy number to be displayed.
-add_annotations = function(annot, chrs_used, chr_coord_offset, cn_yrange) {
-    if (is.null(annot) || sum(annot[, 1] %in% chrs_used) == 0) {
-        return()
-    }
-    yrange_size = cn_yrange[2] - cn_yrange[1]
-    chrom = as.character(annot[, 1])
-    idx = chrom %in% chrs_used
-    x_start = chr_coord_offset[chrom[idx]] + annot[idx, 2]
-    x_end = chr_coord_offset[chrom[idx]] + annot[idx, 3]
-
-    # The Y-axis coordinate of the annotation line segments. This depends on a
-    # HARDCODED multiplier. See also make_campbellgram_outline()
-    OFFSET = 1.1
-    segs_y_coords = (cn_yrange[2]  +  (1 + OFFSET) * yrange_size
-                     + 0.05 * (0:sum(idx) - 1) * yrange_size)
-    text_y_coords = (cn_yrange[2]  +  (1 + 2 * OFFSET) * yrange_size
-                     + 0.05 * (0:sum(idx) - 1) * yrange_size)
-    segments(x0 = x_start, x1 = x_end, y0 = segs_y_coords, lwd = 2)
-    text(x_start/2 + x_end/2, text_y_coords, labels = annot[idx, 4], xpd = T)
-}
-
-
 #' @describeIn campbellgram Plot a rainfall plot of mutation.
 #'
 #' Overlays a rainfall plot on top of a campbellgram.
@@ -720,7 +690,7 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
                         xlim = NULL, cn_bedgraph = NULL, segments = NULL,
                         cn_yrange = NULL, ideogram = T, cn_win_size = NULL,
                         arc_cols = ARC_COLS, cn_cex = 0.3, lwd = 0.75,
-                        annot = NULL, main = NULL, muts = NULL, mut_col = NULL,
+                        main = NULL, muts = NULL, mut_col = NULL,
                         mut_ylim = NULL, plot_xaxt = T) {
     # Internally, the X-axis is composed of all chromosomes in chrs_used stacked
     # side by side. The actual part of the chromosome shown is controlled by
@@ -733,7 +703,6 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
     chrs_shown = set_chrs_shown(chrs_used, chrs_shown)
     bedpe[, 1] = as.character(bedpe[, 1])
     bedpe[, 4] = as.character(bedpe[, 4])
-    annot[, 1] = as.character(annot[, 1])
     muts[, 1] = as.character(muts[, 1])
 
     # Compute the cumulative chromosomal coordinate for each chromosome.
@@ -778,9 +747,6 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
     # Then SVs where one of the chromosomes %in% chrs_used.
     draw_interchr_sv_from_bedpe(bedpe, chrs_used, chr_coord_offset,
                                 cn_yrange, lwd)
-
-    # Add gene/genomic location annotations on top.
-    add_annotations(annot, chrs_used, chr_coord_offset, cn_yrange)
 
     # Finally add the ideogram.
     add_ideogram(ideogram, xlim, chr_lens, chrs_used, cn_yrange,
