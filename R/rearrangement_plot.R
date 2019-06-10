@@ -231,7 +231,7 @@ make_campbellgram_outline = function(cn_yrange, xlim, main, chr_lens,
         y0 = cn_yrange[2] + c(0.3, 0.75) * cn_yrange_size,
         lty = 3
     )
-    abline(h = cn_yrange[2] + 0.5)
+    abline(h = floor(cn_yrange[2]) + 0.5, col = "grey")
 
     # Add Y-axis label and Y-axis ticks.
     axis(2, at = axisTicks(usr = cn_yrange, log = F), las = 2)
@@ -607,25 +607,32 @@ add_xlab_and_xticks = function(xlim, chrs_used, chrs_shown, chr_lens,
 
 #' @describeIn campbellgram Helper function for adding an ideogram to a
 #'   campbellgram.
-add_ideogram = function(ideogram, xlim, chr_lens, chrs_used, cn_yrange,
+add_ideogram = function(ideogram, xlim, chr_lens, chrs_shown, cn_yrange,
                         chr_coord_offset) {
     if (xlim[2] - xlim[1] < 1e7) {
         message("Ideogram plotting disabled because xlim[2] - xlim[1] < 1e7")
         ideogram = F
     }
-    if (ideogram) {
-        cn_yrange_size = cn_yrange[2] - cn_yrange[1]
-        # Currently, ideogram_width is a constant that's set to
-        # cn_yrange_size / 10. See make_campbellgram_outline().
-        ideogram_top = cn_yrange[1] + cn_yrange_size / 100
-        ideogram_width = cn_yrange_size * 9 / 100
-        for (chrom in chrs_used) {
-            ideogram_xy = c(1 + chr_coord_offset[chrom], -ideogram_top)
-            quantsmooth::paintCytobands(
-                chrom, pos = ideogram_xy, units = "bases",
-                width = ideogram_width, length.out = chr_lens[chrom],
-                legend = F, xpd = NA)
-        }
+    if (!ideogram) {
+        return()
+    }
+
+    cn_yrange_size = cn_yrange[2] - cn_yrange[1]
+    # Currently, ideogram_width is a constant that's set to
+    # cn_yrange_size / 10. See make_campbellgram_outline().
+    ideogram_top = cn_yrange[1] + cn_yrange_size / 100
+    ideogram_width = cn_yrange_size * 9 / 100
+
+    # Helper function for plotting a single ideogram.
+    plot_ideogram_of_chrom = function(chrom) {
+        ideogram_xy = c(1 + chr_coord_offset[chrom], -ideogram_top)
+        quantsmooth::paintCytobands(
+            chrom, pos = ideogram_xy, units = "bases",
+            width = ideogram_width, length.out = chr_lens[chrom],
+            legend = F, xpd = NA)
+    }
+    for (chrom in chrs_shown) {
+        plot_ideogram_of_chrom(chrom)
     }
 }
 
@@ -754,7 +761,7 @@ campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
                                 cn_yrange, lwd)
 
     # Finally add the ideogram.
-    add_ideogram(ideogram, xlim, chr_lens, chrs_used, cn_yrange,
+    add_ideogram(ideogram, xlim, chr_lens, chrs_shown, cn_yrange,
                  chr_coord_offset)
 
     # Add X axis names and ticks.
