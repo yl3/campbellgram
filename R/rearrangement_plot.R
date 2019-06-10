@@ -258,7 +258,7 @@ add_cns_to_campbellgram = function(chrs_shown, xlim, chr_lens, cn_win_size,
                  && !all(xlim == c(1, chr_lens[chrs_shown])))
     if (is_zoomed) {
         # Plotting a single zoomed chromosome.
-        idx = (plotted_cn[, 1] == chrom
+        idx = (plotted_cn[, 1] == chrs_shown
                & plotted_cn[, 2] >= xlim[1]
                & plotted_cn[, 3] <= xlim[2])
         average_cn_by_window = window_means(
@@ -270,7 +270,7 @@ add_cns_to_campbellgram = function(chrs_shown, xlim, chr_lens, cn_win_size,
         )
         x = average_cn_by_window$window_coords
         y = average_cn_by_window$window_means
-        y = ifelse(y < cn_yrange | y > cn_yrange, NA, y)
+        y = ifelse(y < cn_yrange[1] | y > cn_yrange[2], NA, y)
         points(x, y, pch = 16, cex = cn_cex)
     } else {
         # Plotting one or multiple entire chromosomes.
@@ -416,11 +416,13 @@ draw_intrachr_sv_arc = function(sv_bedpe, chrs_used, chr_coord_offset, arc_cols,
 
 #' Draw inter-chromosomal rearrangements at specified locations.
 draw_interchr_sv_arc = function(chr_coord_offset, sv_chr, sv_chr_pos, sv_dir,
-                                cn_yrange, lwd) {
+                                mate_chr, cn_yrange, lwd) {
     cn_yrange_size = diff(cn_yrange)
     x = chr_coord_offset[sv_chr] + sv_chr_pos
     x_delta = ifelse(sv_dir == "+", -1, +1) * diff(par("usr")[1:2]) / 50
     seg_bot = cn_yrange[1]
+    # seg_top, y_delta and text_y_delta are computed using hard-coded values
+    # that depend on values used in make_campbellgram_outline().
     seg_top = cn_yrange[2] + cn_yrange_size
     y_delta = ifelse(sv_dir == "+", 0.1, 0.3) * cn_yrange_size
     text_y_delta = ifelse(sv_dir == "+", 0.2, 0.4) * cn_yrange_size
@@ -429,7 +431,7 @@ draw_interchr_sv_arc = function(chr_coord_offset, sv_chr, sv_chr_pos, sv_dir,
              lwd = lwd)
     segments(x0 = x, y0 = seg_top, x1 = x + x_delta, y1 = seg_top + y_delta,
              xpd = T)
-    text(x + x_delta, seg_top + text_y_delta, sv_chr, xpd = T)
+    text(x + x_delta, seg_top + text_y_delta, mate_chr, xpd = T)
 }
 
 
@@ -442,17 +444,20 @@ draw_interchr_sv_from_bedpe = function(sv_bedpe, chrs_used,
     # Find the low end inter-chromosomal SVs.
     is_inter_chr_low_end = chr_low %in% chrs_used & !(chr_high %in% chrs_used)
     chrom = chr_low[is_inter_chr_low_end]
+    mate_chrom = chr_high[is_inter_chr_low_end]
     pos = rowMeans(sv_bedpe[is_inter_chr_low_end, 2:3])
     dir = sv_bedpe[is_inter_chr_low_end, 9]
 
     # Append the additional high end inter-chromosomal SVs.
     is_inter_chr_high_end = chr_high %in% chrs_used & !(chr_low %in% chrs_used)
     chrom = c(chrom, chr_high[is_inter_chr_high_end])
+    mate_chrom = c(mate_chrom, chr_low[is_inter_chr_high_end])
     pos = c(pos, rowMeans(sv_bedpe[is_inter_chr_high_end, 5:6]))
     dir = c(dir, sv_bedpe[is_inter_chr_high_end, 10])
 
     # Draw the inter-chromosomal lines.
-    draw_interchr_sv_arc(chr_coord_offset, chrom, pos, dir, cn_yrange, lwd)
+    draw_interchr_sv_arc(chr_coord_offset, chrom, pos, dir, mate_chrom,
+                         cn_yrange, lwd)
 }
 
 
