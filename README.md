@@ -2,6 +2,13 @@
 
 *Joint visualisation of rearrangement junctions and copy number in somatic genomes.*
 
+## Usage
+
+    campbellgram(hs37d5_chrom_sizes, example_bedpe, chrs_used = c("7", "12"),
+                 cn_bedgraph = example_cn, muts = example_mut)
+
+![Example campbellgram](example.png)
+
 ## Features
 
 * Joint visualisation of:

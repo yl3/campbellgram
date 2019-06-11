@@ -561,7 +561,7 @@ add_xlab = function(xlim, chrs_used, chrs_shown, chr_lens, chr_coord_offset,
 }
 
 
-#' @descrbeIn add_xlab_and_xticks add_xticks
+#' @describeIn add_xlab_and_xticks add_xticks
 add_xticks = function(xlim, chr_lens, chrs_used, chrs_shown, chr_coord_offset) {
     if (all(xlim == c(1, sum(chr_lens[chrs_used])))) {
         # xlim encompasses all chromosomes in chrs_used.
@@ -661,7 +661,6 @@ add_ideogram = function(ideogram, xlim, chr_lens, chrs_shown, cn_yrange,
 #'   chromosome length on the second column.
 #' @param bedpe SV junctions in BEDPE format
 #'   (\link{https://bedtools.readthedocs.io/en/latest/content/general-usage.html#bedpe-format}).
-#'   TODO(yl3): default
 #' @param chrs_used rearrangement junctions within and between these chromosomes
 #'   are visualised as intra-chromosomal junctions with arcs. Other
 #'   rearrangement junctions are visualised as vertical lines. Names for
@@ -682,7 +681,7 @@ add_ideogram = function(ideogram, xlim, chr_lens, chrs_shown, cn_yrange,
 #' @param cn_yrange Y-axis range for copy number.
 #'   Default: \code{c(0, quantile(cn_bedgraph[,4], 0.999))}.
 #' @param ideogram: whether to plot an ideogram. By default, an ideogram is
-#'   shown if the X-axis spans more than 1 Mb.
+#'   shown if the X-axis spans more than 10 Mb.
 #' @param cn_win_size window size for averaging copy number before plotting
 #'   them. By default, if more than 1e7 bp is displayed, then window size is
 #'   10 kb, otherwise if more than 1e6 bp is displayed, then window size is
@@ -695,9 +694,9 @@ add_ideogram = function(ideogram, xlim, chr_lens, chrs_shown, cn_yrange,
 #' @param muts a 'data.frame' object with the following columns: chromosome,
 #'   position, base mutated from, base mutated to. Bases must be in
 #'   {A, C, G, T}.
-#' @param mut_col a vector of >= 6 colours for C>A, C>G, C>T, T>A, T>C and T>G
-#'   mutations. Default: c("orange", "brown", "red", "purple", "pink",
-#'   "lightgreen").
+#' @param mut_col a named vector of >= 6 colours with names "C>A", "C>G", "C>T",
+#'   "T>A", "T>C" and "T>G". Default: c("C>A" = "orange", "C>G" = "brown",
+#'   "C>T" = "red", "T>A" = "purple", "T>C" = "pink", "T>G" = "lightgreen").
 #' @param mut_ylim Y-axis limits for the rainfall plot.
 #' @param plot_xaxt whether to plot X axis ticks or not.
 campbellgram = function(ref_genome, bedpe, chrs_used, chrs_shown = NULL,
