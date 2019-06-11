@@ -521,6 +521,7 @@ add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
     y_bottom_ndc = grconvertY(0, "user", "ndc")
     y_top_ndc = grconvertY(par("usr")[4] - 0.05 * diff(par("usr")[3:4]), "user",
                            "ndc")
+    orig_plt = par("plt")
     par(plt = c(par("plt")[1:2], y_bottom_ndc, y_top_ndc), new = T)
     xlim = par("usr")[1:2]
 
@@ -529,6 +530,7 @@ add_mutation_rainfall_plot = function(muts, chrs_used, chr_coord_offset,
          col = mut_col[mut_type], pch = 16, ylim = mut_ylim, cex = 0.75)
     axis(4)
     mtext("Inter-mutation distance (bp)", 4, line = 2)
+    par(plt = orig_plt)
 }
 
 
@@ -541,7 +543,7 @@ add_xlab = function(xlim, chrs_used, chrs_shown, chr_lens, chr_coord_offset,
         # xlim encompasses all chromosomes in chrs_used.
         label_pos = (cumsum(chr_lens[chrs_used]) + chr_coord_offset) / 2
         labels = ifelse(rep(plot_xaxt, length(chrs_used)),
-                        paste("chr", chrs_used, " position (Mb)", sep = ""),
+                        paste("chr ", chrs_used, " position (Mb)", sep = ""),
                         chrs_used)
         axis(1, at = label_pos, labels = labels, tick = F, cex.lab = 1.5)
     } else {
@@ -549,9 +551,9 @@ add_xlab = function(xlim, chrs_used, chrs_shown, chr_lens, chr_coord_offset,
         # this case only one chromosome is shown either through chrs_shown or
         # chrs_used.
         if (!is.null(chrs_shown)) {
-            label = paste("chr", chrs_shown, " position (Mb)", sep = "")
+            label = paste("chr ", chrs_shown, " position (Mb)", sep = "")
         } else {
-            label = paste("chr", chrs_used, " position (Mb)", sep = "")
+            label = paste("chr ", chrs_used, " position (Mb)", sep = "")
         }
         axis(1, at = mean(xlim), labels = label, tick = F, cex.lab = 1.5)
     }
