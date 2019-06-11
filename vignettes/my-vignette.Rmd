@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-Campbellgram is an R package for visualising *absolute* copy number data and structural variation data jointly in the same plot. The basic premise of the package is its simplicity of use: all required inputs of the main function, `campbellgram()`, are standard R data frames.
+Campbellgram is an R package for visualising *absolute* copy number data and structural variation data jointly in the same plot. The basic premise of the package is that all required inputs of the main function, `campbellgram()`, are standard R data frames.
 
 In addition, `campbellgram()` allows a mutation rainfall plot to be overlaid on top of a campbellgram.
 
@@ -85,55 +85,30 @@ campbellgram(hs37d5_chrom_sizes, example_bedpe, chrs_used = c("7", "12"),
             cn_bedgraph = example_cn, chrs_shown = "7", xlim = c(70e6, 100e6))
 ```
 
+## Overlaying a rainfall plot
 
+A rainfall plot can be overlaid on top of a campbellgram by using the parameter `muts`, which accepts a data frame of columns in the following order: chromosome, position, base mutated from and base mutated to. The mutations are automatically flipped to the pyrimidine strand, resulting in six possible mutation types.
 
+In `campbellgram()`, inter-mutation distance of a mutation is computed as the harmonic mean of its distances to its adjacent mutations. Since the harmonic mean tends to its smallest data point, the resulting distance is very similar to an alternative approach of just considering each mutation's distance to its next (or previous) mutation. Moreover, by using the harmonic mean approach, the number of mutations in a mutation cluster is correctly shown, as opposed to showing one fewer mutation than there is in a cluster due to the fact that the "last" mutation of the cluster having a large distance it its next mutation.
 
-
-
-Vignettes are long form documentation commonly included in packages. Because they are part of the distribution of the package, they need to be as compact as possible. The `html_vignette` output type provides a custom style sheet (and tweaks some options) to ensure that the resulting html is as small as possible. The `html_vignette` format:
-
-- Never uses retina figures
-- Has a smaller default figure size
-- Uses a custom CSS stylesheet instead of the default Twitter Bootstrap style
-
-## Vignette Info
-
-Note the various macros within the `vignette` section of the metadata block above. These are required in order to instruct R how to build the vignette. Note that you should change the `title` field and the `\VignetteIndexEntry` to match the title of your vignette.
-
-## Styles
-
-The `html_vignette` template includes a basic CSS theme. To override this theme you can specify your own CSS in the document metadata as follows:
-
-    output:
-      rmarkdown::html_vignette:
-        css: mystyles.css
-
-## Figures
-
-The figure sizes have been customised so that you can easily put two images side-by-side.
-
-```{r, fig.show='hold'}
-plot(1:10)
-plot(10:1)
+```{r}
+knitr::kable(head(example_mut))
+campbellgram(hs37d5_chrom_sizes, example_bedpe, chrs_used = c("7", "12"),
+             cn_bedgraph = example_cn, muts = example_mut)
 ```
 
-You can enable figure captions by `fig_caption: yes` in YAML:
+See parameter `mut_col` in `?campbellgram` for the default colours used for each of the six mutation types. This parameter can be used to assign a different colour map for the mutation types.
 
-    output:
-      rmarkdown::html_vignette:
-        fig_caption: yes
+## Copy number segments
 
-Then you can use the chunk option `fig.cap = "Your figure caption."` in **knitr**.
+So far, the example campbellgrams have been visualised using high resolution copy number data points. In addition to, or in place of, such data, it is also possible to plot copy number segments using the `segments` parameter, which accepts a data frame of copy number segments in BED format.
 
-## More Examples
+## Other parameters
 
-You can write math expressions, e.g. $Y = X\beta + \epsilon$, footnotes^[A footnote here.], and tables, e.g. using `knitr::kable()`.
+The Y-axis range for the copy number and rainfall plot data can be adjusted using parameters `cn_yrange` and `mut_ylim`, respectively.
 
-```{r, echo=FALSE, results='asis'}
-knitr::kable(head(mtcars, 10))
-```
+By default, the input copy number data points (but not copy number segments) are averaged using non-overlapping sliding windows (currently this feature cannot be bypassed). The purpose of this step is to reduce the number of data points to be plotted when the copy number data is of very high density (e.g. 500 bp windows). See `?campbellgram` for the default window sizes used. Parameter `cn_win_size` can be used to manually set the window size to be used and parameter `cn_cex` can be used to control the size of the copy number points.
 
-Also a quote using `>`:
+Parameter `lwd` controls the line width of most of the plotted line segments, including copy number segments and structural variation arcs and line segments.
 
-> "He who gives up [code] safety for [code] speed deserves neither."
-([via](https://twitter.com/hadleywickham/status/504368538874703872))
+The plotting of the ideograms is suppressed when less than 10 Mb is shown. Otherwise, the generation of the ideogram can be suppressed using parameter setting `ideogram = FALSE`. The X-axis ticks and labels can be suppressed using `plot_xaxt = FALSE`.
